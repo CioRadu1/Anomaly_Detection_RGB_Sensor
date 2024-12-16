@@ -1,0 +1,12 @@
+C:\Users\fdrff\Desktop\SSCProjectVS2022\SSCGUI\bin\Debug\SSCGUI.exe.config
+C:\Users\fdrff\Desktop\SSCProjectVS2022\SSCGUI\bin\Debug\SSCGUI.exe
+C:\Users\fdrff\Desktop\SSCProjectVS2022\SSCGUI\bin\Debug\SSCGUI.pdb
+C:\Users\fdrff\Desktop\SSCProjectVS2022\SSCGUI\obj\Debug\SSCGUI.csproj.AssemblyReference.cache
+C:\Users\fdrff\Desktop\SSCProjectVS2022\SSCGUI\obj\Debug\SSCGUI.Form1.resources
+C:\Users\fdrff\Desktop\SSCProjectVS2022\SSCGUI\obj\Debug\SSCGUI.Properties.Resources.resources
+C:\Users\fdrff\Desktop\SSCProjectVS2022\SSCGUI\obj\Debug\SSCGUI.csproj.GenerateResource.cache
+C:\Users\fdrff\Desktop\SSCProjectVS2022\SSCGUI\obj\Debug\SSCGUI.csproj.CoreCompileInputs.cache
+C:\Users\fdrff\Desktop\SSCProjectVS2022\SSCGUI\obj\Debug\SSCGUI.exe
+C:\Users\fdrff\Desktop\SSCProjectVS2022\SSCGUI\obj\Debug\SSCGUI.pdb
+C:\Users\fdrff\Desktop\SSCProjectVS2022\SSCGUI\bin\Debug\Guna.UI2.dll
+C:\Users\fdrff\Desktop\SSCProjectVS2022\SSCGUI\obj\Debug\SSCGUI.csproj.CopyComplete
