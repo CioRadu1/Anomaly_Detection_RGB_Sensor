@@ -4,7 +4,6 @@
 
 #define BUFFER_SIZE 10
 #define THRESHOLD 2.0
-#define ANOMALY_THRESHOLD 50
 
 Adafruit_TCS34725 tcs = Adafruit_TCS34725(TCS34725_INTEGRATIONTIME_50MS, TCS34725_GAIN_4X);
 
@@ -12,13 +11,19 @@ float redBuffer[BUFFER_SIZE];
 float greenBuffer[BUFFER_SIZE];
 float blueBuffer[BUFFER_SIZE];
 float lightBuffer[BUFFER_SIZE];
+
 int bufferIndex = 0;
+int msSum = 0;
+int wfdSum = 0;
+int orgSum = 0;
 int bufferCount = 0;
+int ten = 10;
 int defect = 10;
 float redCUSUM = 0, greenCUSUM = 0, blueCUSUM = 0, lightCUSUM = 0;
 float redMean = 0, greenMean = 0, blueMean = 0, lightMean = 0;
+float redM2 = 0, greenM2 = 0, blueM2 = 0, lightM2 = 0;
 float redStdDev = 0, greenStdDev = 0, blueStdDev = 0, lightStdDev = 0;
-float redZScore, greenZScore, blueZScore, lightZScore;
+float redZScore, greenZScore, blueZScore, lightZScore, redZScoreWelford, greenZScoreWelford, blueZScoreWelford, lightZScoreWelford;
 
 float redCalibration = 0, greenCalibration = 0, blueCalibration = 0;
 bool calibrated = false;
@@ -33,6 +38,7 @@ void GetColorData() {
   float blue = (b / sum) * 255;
   float light = read_adc(0);
 
+  // Store values in buffer
   redBuffer[bufferIndex] = red;
   greenBuffer[bufferIndex] = green;
   blueBuffer[bufferIndex] = blue;
@@ -42,32 +48,38 @@ void GetColorData() {
 
   if (bufferCount < BUFFER_SIZE) bufferCount++;
 
-  float redSum = 0, greenSum = 0, blueSum = 0, lightSum = 0;
-  for (int i = 0; i < bufferCount; i++) {
-    redSum += redBuffer[i];
-    greenSum += greenBuffer[i];
-    blueSum += blueBuffer[i];
-    lightSum += lightBuffer[i];
-  }
+  //Original
+  updateBufferMeanAndVariance(red, redMean, redStdDev, redBuffer, bufferCount);
+  updateBufferMeanAndVariance(green, greenMean, greenStdDev, greenBuffer, bufferCount);
+  updateBufferMeanAndVariance(blue, blueMean, blueStdDev, blueBuffer, bufferCount);
+  updateBufferMeanAndVariance(light, lightMean, lightStdDev, lightBuffer, bufferCount);
 
-  redMean = redSum / bufferCount;
-  greenMean = greenSum / bufferCount;
-  blueMean = blueSum / bufferCount;
-  lightMean = lightSum / bufferCount;
-
-  float redVariance = 0, greenVariance = 0, blueVariance = 0, lightVariance = 0;
-  for (int i = 0; i < bufferCount; i++) {
-    redVariance += pow(redBuffer[i] - redMean, 2);
-    greenVariance += pow(greenBuffer[i] - greenMean, 2);
-    blueVariance += pow(blueBuffer[i] - blueMean, 2);
-    lightVariance += pow(lightBuffer[i] - lightMean, 2);
-  }
-  redStdDev = sqrt(redVariance / bufferCount);
-  greenStdDev = sqrt(greenVariance / bufferCount);
-  blueStdDev = sqrt(blueVariance / bufferCount);
-  lightStdDev = sqrt(lightVariance / bufferCount);
+  //Welford's algorithm
+  updateMeanAndVariance(red, redMean, redM2, bufferCount);
+  updateMeanAndVariance(green, greenMean, greenM2, bufferCount);
+  updateMeanAndVariance(blue, blueMean, blueM2, bufferCount);
+  updateMeanAndVariance(light, lightMean, lightM2, bufferCount);
 }
 
+void updateBufferMeanAndVariance(float newValue, float &mean, float &stdDev, float buffer[], int count) {
+  float sum = 0;
+  for (int i = 0; i < count; i++) {
+    sum += buffer[i];
+  }
+  mean = sum / count;
+
+  float variance = 0;
+  for (int i = 0; i < count; i++) {
+    variance += pow(buffer[i] - mean, 2);
+  }
+  stdDev = sqrt(variance / count);
+}
+
+void updateMeanAndVariance(float newValue, float &mean, float &M2, int count) {
+  float delta = newValue - mean;
+  mean += delta / count;
+  M2 += delta * (newValue - mean);
+}
 
 float calculateCUSUM(float value, float mean, float threshold, float& cusum) {
   cusum = max(0.0f, cusum + (value - mean - threshold));
@@ -120,45 +132,74 @@ void loop() {
     defect--;
     return;
   }
-  unsigned long startTime, endTime;
+  unsigned long startTime, endTime, startTimeWelford, endTimeWelford, startTimeOriginal, endTimeOriginal;
   startTime = millis();
-  for (int i = 0; i < bufferCount; i++) {
-      int index = (bufferIndex + i) % bufferCount;
 
-      float redValue = redBuffer[index];
-      float greenValue = greenBuffer[index];
-      float blueValue = blueBuffer[index];
-      float lightValue = lightBuffer[index];
+  float redValue = redBuffer[bufferIndex];
+  float greenValue = greenBuffer[bufferIndex];
+  float blueValue = blueBuffer[bufferIndex];
+  float lightValue = lightBuffer[bufferIndex];
 
-      redZScore = calculateZScore(redValue, redMean, redStdDev);
-      greenZScore = calculateZScore(greenValue, greenMean, greenStdDev);
-      blueZScore = calculateZScore(blueValue, blueMean, blueStdDev);
-      lightZScore = calculateZScore(lightValue, lightMean, lightStdDev);
+  startTimeOriginal = micros();
 
-      redCUSUM = calculateCUSUM(redValue, redMean, THRESHOLD, redCUSUM);
-      greenCUSUM = calculateCUSUM(greenValue, greenMean, THRESHOLD, greenCUSUM);
-      blueCUSUM = calculateCUSUM(blueValue, blueMean, THRESHOLD, blueCUSUM);
-      lightCUSUM = calculateCUSUM(lightValue, lightMean, THRESHOLD, lightCUSUM);
+  redZScore = calculateZScore(redValue, redMean, redStdDev);
+  greenZScore = calculateZScore(greenValue, greenMean, greenStdDev);
+  blueZScore = calculateZScore(blueValue, blueMean, blueStdDev);
+  lightZScore = calculateZScore(lightValue, lightMean, lightStdDev);
 
-      if (isnan(redZScore)) redZScore = 0;
-      if (isnan(greenZScore)) greenZScore = 0;
-      if (isnan(blueZScore)) blueZScore = 0;
-      if (isnan(lightZScore)) lightZScore = 0;
+  endTimeOriginal = micros();
+  orgSum += (endTimeOriginal - startTimeOriginal);
 
-      Serial.print(redValue, 2); Serial.print(",");
-      Serial.print(greenValue, 2); Serial.print(",");
-      Serial.print(blueValue, 2); Serial.print(",");
-      Serial.print(lightValue, 2); Serial.print(",");
-      Serial.print(redZScore, 2); Serial.print(",");
-      Serial.print(greenZScore, 2); Serial.print(",");
-      Serial.print(blueZScore, 2); Serial.print(",");
-      Serial.print(lightZScore, 2); Serial.print(",");
-      Serial.print(redCUSUM, 2); Serial.print(",");
-      Serial.print(greenCUSUM, 2); Serial.print(",");
-      Serial.print(blueCUSUM, 2); Serial.print(",");
-      Serial.println(lightCUSUM, 2);
-    }
+  startTimeWelford = micros();
+  redZScoreWelford = calculateZScore(redValue, redMean, sqrt(redM2 / bufferCount));
+  greenZScoreWelford = calculateZScore(greenValue, greenMean, sqrt(greenM2 / bufferCount));
+  blueZScoreWelford = calculateZScore(blueValue, blueMean, sqrt(blueM2 / bufferCount));
+  lightZScoreWelford = calculateZScore(lightValue, lightMean, sqrt(lightM2 / bufferCount));
+  endTimeWelford = micros();
+  wfdSum += (endTimeWelford - startTimeWelford);
+
+  redCUSUM = calculateCUSUM(redValue, redMean, THRESHOLD, redCUSUM);
+  greenCUSUM = calculateCUSUM(greenValue, greenMean, THRESHOLD, greenCUSUM);
+  blueCUSUM = calculateCUSUM(blueValue, blueMean, THRESHOLD, blueCUSUM);
+  lightCUSUM = calculateCUSUM(lightValue, lightMean, THRESHOLD, lightCUSUM);
+
+  if (isnan(redZScore)) redZScore = 0;
+  if (isnan(greenZScore)) greenZScore = 0;
+  if (isnan(blueZScore)) blueZScore = 0;
+  if (isnan(lightZScore)) lightZScore = 0;
+  if (isnan(redZScoreWelford)) redZScoreWelford = 0;
+  if (isnan(greenZScoreWelford)) greenZScoreWelford = 0;
+  if (isnan(blueZScoreWelford)) blueZScoreWelford = 0;
+  if (isnan(lightZScoreWelford)) lightZScoreWelford = 0;
+
   endTime = millis();
-  Serial.print(endTime - startTime); Serial.print(",");
-  Serial.println(usedStackSpace());
+  msSum += (endTime - startTime);
+  Serial.print(redValue, 2); Serial.print(",");
+  Serial.print(greenValue, 2); Serial.print(",");
+  Serial.print(blueValue, 2); Serial.print(",");
+  Serial.print(lightValue, 2); Serial.print(",");
+  Serial.print(redZScore, 2); Serial.print(",");
+  Serial.print(greenZScore, 2); Serial.print(",");
+  Serial.print(blueZScore, 2); Serial.print(",");
+  Serial.print(lightZScore, 2); Serial.print(",");
+  Serial.print(redZScoreWelford, 2); Serial.print(",");
+  Serial.print(greenZScoreWelford, 2); Serial.print(",");
+  Serial.print(blueZScoreWelford, 2); Serial.print(",");
+  Serial.print(lightZScoreWelford, 2); Serial.print(",");
+  Serial.print(redCUSUM, 2); Serial.print(",");
+  Serial.print(greenCUSUM, 2); Serial.print(",");
+  Serial.print(blueCUSUM, 2); Serial.print(",");
+  Serial.println(lightCUSUM, 2);
+  ten--;
+  if (ten == 0){
+    Serial.print(orgSum); Serial.print(",");
+    Serial.print(wfdSum); Serial.print(",");
+    Serial.print(msSum); Serial.print(",");
+    Serial.println(usedStackSpace());
+    msSum = 0;
+    wfdSum = 0;
+    orgSum = 0;
+    ten = 10;
+  }
+
 }
